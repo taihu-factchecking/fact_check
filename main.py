@@ -92,7 +92,7 @@ def claim_extraction(request: TextRequest):
     text = re.sub(r"\[.*?\]", "", text)
     cl2_pair = _process(result)
     cl_list = [pair[0] for pair in cl2_pair]
-    print(cl_list)
+    # print(cl_list)
     cl_index = [(text.index(pair[1]), text.index(pair[1])+len(pair[1])) for pair in cl2_pair]
     return {"claims": cl_list, "index": cl_index}
 
