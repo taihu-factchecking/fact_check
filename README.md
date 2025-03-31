@@ -1,7 +1,7 @@
 # fact_check
 
 ## Fact-Check API Server
-輸入台鵠系統的output("string")及檢索到的documents("https://nvcenter.ntu.edu.tw:8000/docs#/retrieve輸出的格式")，回傳是否被檢索到的文檔所支持。
+輸入台鵠系統的output("string")及檢索到的documents("https://nvcenter.ntu.edu.tw:8000/docs#/retrieve" 輸出的格式)，回傳是否被檢索到的文檔所支持。
 
 ### Request format example
 ```
