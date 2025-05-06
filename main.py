@@ -16,8 +16,19 @@ from fastapi import Request
 from datetime import datetime
 from rapidfuzz import fuzz
 
-
 app = FastAPI()
+
+### handle CORS ###
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    # allow_origins= ['http://localhost:3000', 'https://hpc.psy.ntu.edu.tw/taihucais/chat'],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# print("CORS middleware 已經啟用！")
+### handle CORS ###
 
 your_api_key = os.getenv("openai_api_key")
 
