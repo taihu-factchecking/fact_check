@@ -422,8 +422,8 @@ async def full_pipeline(request: PipelineRequest):
 
     {verification_response}
     """
-    with open("results/"+time_string+".txt", "w", encoding="utf-8") as file:
-        file.write(output_text)
+    # with open("results/"+time_string+".txt", "w", encoding="utf-8") as file:
+    #     file.write(output_text)
 
     return {
         "verification_results": verification_response["verification_results"]
