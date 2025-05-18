@@ -404,7 +404,6 @@ async def full_pipeline(request: PipelineRequest):
         cls = clm_cls[claims[res_idx]]  # 找到clause
         result["idx"] = _find_span_fuzzy(cls, text)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
 
-        print("*****************",result["filename"])
         # 省議會公報 如果factuality=True
         if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
             result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
@@ -461,8 +460,7 @@ async def full_pipeline(request: PipelineRequest):
 
     {verification_response}
     """
-    with open("results/"+time_string+".txt", "w", encoding="utf-8") as file:
-        file.write(output_text)
+
 
     return {
         "verification_results": verification_response["verification_results"]
