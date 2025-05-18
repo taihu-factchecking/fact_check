@@ -229,23 +229,50 @@ async def claim_verification(request: VerificationRequest):
 [回應格式]:
 {{
 "claim": "提取的聲明",
-"factuality": 如果claim有被證據支持則為 True，否則為 False,
-"filename": "資料來源。如果factuality為True，則為支持claim的檔案名稱。否則為None",
-"evidence": "用以判斷claim真實性的證據片段，如果claim沒有被任何證據支持，則為None",
-"reasoning": "判斷claim是否被evidence支持的原因"
+"reasoning": "判斷claim是否被evidence支持的原因",
+"factuality": 如果claim有被證據支持則為True，如果claim被證據反駁或claim跟證據無關為False,
+"filename": "如果證據跟claim沒有關聯，則不要放任何檔案的名稱，放None；如果claim有被證據支持或反駁，則放檔案名稱",
+"evidence": "用以判斷claim真實性的證據片段。如果claim沒有被任何證據支持，則為None"
 }}
                 
-[範例]:
-[文本]: 京都是日本的首都，以其傳統的木造建築和千年寺廟著稱。東京塔是世界上第二高的自立式鋼塔。
-[證據]: "檔案1:\n京都是日本的歷史文化中心。\n\n檔案2:京都曾經是日本的首都，直到1868年為止。京都富有濃厚的文化氣息。"
+[範例]
+[文本]: 京都是日本的歷史文化中心
+[證據]: "檔案1:\n臣孫士毅跪奏。再，臣遵旨赴潮駐劄，所有奏報事件，若仍由廣東省城前至江西，道路紆迴，不免稽延時日。查自潮州至江西之筠門嶺前赴贑州，為潮民赴江西貿易往來孔道，較之經由廣東省城可少行一千幾百里。是以臣在潮專差齎摺進京，俱走筠門嶺一路，即由驛拜發各摺，亦俱自行雇備人夫，專差齎至贑縣，再行發遞，以期迅速。惟由贑來潮，遇有馳遞諭旨，若仍從廣東省城轉遞，計期太遲。當將自贑縣至筠門嶺可否接遞文報之處，咨商江西撫臣何裕城。茲准覆稱，現已量為酌撥。臣上次接奉諭旨，亦已由筠門嶺遞到，應請俟臺逆將次事竣，粵省無甚交涉事件，即行知會江西，撤去腰站。合即附片聲明。謹奏。〔硃批〕：好，知道了。\n\n檔案2:孫士毅於乾隆五十二年四月二十四日對於文報傳遞路徑的調整，具體提出了一些改道方案。"
 [回應]：
 {{
-"claim": "京都是日本的首都",
+"claim": "京都是日本的歷史文化中心",
+"reasoning": "提供的證據與京都是否為日本的歷史文化中心無直接關聯。",
+"factuality": False,           
+"filename": None,
+"evidence": None
+}}
+                 
+[範例]
+[文本]: 改道方案使用潮州經筠門嶺到贑州路線
+[證據]: "檔案1:\n臣孫士毅跪奏。再，臣遵旨赴潮駐劄，所有奏報事件，若仍由廣東省城前至江西，道路紆迴，不免稽延時日。查自潮州至江西之筠門嶺前赴贑州，為潮民赴江西貿易往來孔道，較之經由廣東省城可少行一千幾百里。是以臣在潮專差齎摺進京，俱走筠門嶺一路，即由驛拜發各摺，亦俱自行雇備人夫，專差齎至贑縣，再行發遞，以期迅速。惟由贑來潮，遇有馳遞諭旨，若仍從廣東省城轉遞，計期太遲。當將自贑縣至筠門嶺可否接遞文報之處，咨商江西撫臣何裕城。茲准覆稱，現已量為酌撥。臣上次接奉諭旨，亦已由筠門嶺遞到，應請俟臺逆將次事竣，粵省無甚交涉事件，即行知會江西，撤去腰站。合即附片聲明。謹奏。〔硃批〕：好，知道了。\n\n檔案2:京都曾經是日本的首都，直到1868年為止。京都富有濃厚的文化氣息。"
+[回應]：
+{{
+"claim": "改道方案使用潮州經筠門嶺到贑州路線",
+"reasoning": "由證據顯示，改道方案使用自潮州至江西之筠門嶺前赴贑州的往來通道。",
+"factuality": True,
+"filename": "檔案1",
+"evidence": "查自潮州至江西之筠門嶺前赴贑州，為潮民赴江西貿易往來孔道，較之經由廣東省城可少行一千幾百里。"
+}}
+                 
+[範例]
+[文本]: 一元化課程對升學生不適用
+[證據]: "檔案1:\n省議會關切教育體系的公平性和多元性\n\n檔案2:本省與北、高二市所受教育的質差很多，不知感想如何？延長十二年國教　對學生數的如何分配與現行教育體系下是否足夠分配，均應慎重考慮；目前課程的僵化是值得檢討，尤其課程的一元化是適應於升學的，對於不升學的根本無法接受；如教材要有所改進時，建議應要如何落實本土化教育；如果調整教材之後老師是否要進修？對於新教材要有新的教法？"
+[回應]：
+{{
+"claim": "一元化課程對升學生不適用",
+"reasoning": "由證據顯示，一元化課程適用於升學生",
 "factuality": False,
 "filename": "檔案2",
-"evidence": "京都曾經是日本的首都，直到1868年為止。",
-"reasoning": "由證據顯示，京都是日本的首都這個事實只到1868年為止，代表這之後日本的首都已不再是京都。"
+"evidence": "目前課程的僵化是值得檢討，尤其課程的一元化是適應於升學的，對於不升學的根本無法接受；"
 }}
+
+
+
                 
 現在使用以下文本和證據完成任務：
 [文本]: {text}
@@ -377,8 +404,9 @@ async def full_pipeline(request: PipelineRequest):
         cls = clm_cls[claims[res_idx]]  # 找到clause
         result["idx"] = _find_span_fuzzy(cls, text)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
 
+        print("*****************",result["filename"])
         # 省議會公報 如果factuality=True
-        if result["filename"] != None and result["filename"] in doc_id:
+        if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
             result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
 
             metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"]}""")
@@ -387,14 +415,14 @@ async def full_pipeline(request: PipelineRequest):
 
 
             # 新增 1.來源 2.標題 3.日期 4.證據句子 到輸出
-            ##########################################
+                
             result["data_source"] = metadata["collect_name"]
             result["data_title"] = metadata["data_title"]
             result["data_date"] = metadata["date_string"]
             ##########################################
 
-        # 明清台灣行政檔案 如果factuality=True
-        elif result["filename"] != None:
+        # 明清台灣行政檔案
+        elif result["filename"] not in [None, 'null']:
             result["docid"] = ""  # 明清台灣行政檔案沒有identifier
             result["url"] = f"""https://nvcenter.ntu.edu.tw:8000/full_text?title={result["filename"]}"""  # 獲得全文
 
@@ -409,7 +437,7 @@ async def full_pipeline(request: PipelineRequest):
             result["data_date"] = metadata["date_string"]
             ##########################################
         
-        else:  # 如果factuality=False
+        else:  # 證據不相關
             result["docid"] = ""
             result["url"] = ""
             result["data_source"] = ""
@@ -433,11 +461,9 @@ async def full_pipeline(request: PipelineRequest):
 
     {verification_response}
     """
-    # with open("results/"+time_string+".txt", "w", encoding="utf-8") as file:
-    #     file.write(output_text)
+    with open("results/"+time_string+".txt", "w", encoding="utf-8") as file:
+        file.write(output_text)
 
     return {
         "verification_results": verification_response["verification_results"]
     }
-
-
