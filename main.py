@@ -99,8 +99,8 @@ def _find_span(clause: str, full_text: str):
     end = start + len(best_match)
     return (start, end)
 
-def _find_span_fuzzy(clause, full_text):
-    segments = split_into_clauses(full_text)
+def _find_span_fuzzy(clause, full_text, seg):
+    segments = seg
     best_score = 0
     best_segment = ""
     for segment in segments:
@@ -113,16 +113,16 @@ def _find_span_fuzzy(clause, full_text):
     start = full_text.find(best_segment)
     end = start + len(best_segment)
     print((clause, full_text[start:end]))
-    return start, end
+    return (start, end), best_segment
 
 
 @app.post("/extract_uf")
-def claim_extraction(request: TextRequest):
+async def claim_extraction(request: TextRequest):
     text = request.text
     
-    def _call_gpt(text: str) -> str:
-        client = OpenAI(api_key=your_api_key)
-        responses = client.chat.completions.create(
+    async def _call_gpt(text: str) -> str:
+        client = AsyncOpenAI(api_key=your_api_key)
+        responses = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -176,7 +176,7 @@ def claim_extraction(request: TextRequest):
         return group_list
     
 
-    result = _call_gpt(text)
+    result = await _call_gpt(text)
     text = re.sub(r"\[.*?\]", "", text)  # 去除中括號及其內容
     cl2_pair = _process(result)  # 將("claim", "clause")拆分出來
     clm_list = [pair[0] for pair in cl2_pair]  # 提取出所有聲明
@@ -300,6 +300,7 @@ async def claim_verification(request: VerificationRequest):
 @app.post("/fact_check_pipeline")
 async def full_pipeline(request: PipelineRequest):
     print("Execution Time:　", datetime.now())
+    execution_time_start = time.time()
     text = request.text  # String
     input_docs = request.docs  # List[String] e.g. ['TPC03GAZ-00211314_1763_1.txt', 'TPC03GAZ-00052484_0163_1.txt']
     docs = []
@@ -307,6 +308,7 @@ async def full_pipeline(request: PipelineRequest):
     print("text: ", text)
     print("input_docs: ", input_docs)
 
+    print("process input...")
     ### Process input_data to the format ###
     for doc in input_docs:
         if "TPC" in doc:  # 省議會公報
@@ -351,7 +353,9 @@ async def full_pipeline(request: PipelineRequest):
     clm_cls = {}  # claim-clause pairs | Key: claim, Values: clause
     
     ### Prepare claims ###
-    raw_claims = claim_extraction(TextRequest(text=text))  # Dictionary{claims: List[String], clause: List[String]}
+    execution_time_process_input = time.time()
+    print("extract claims...")
+    raw_claims = await claim_extraction(TextRequest(text=text))  # Dictionary{claims: List[String], clause: List[String]}
     for claim, clause in zip(raw_claims["claims"], raw_claims["clauses"]):
         clm_cls[claim] = clause
     claims = raw_claims["claims"]
@@ -374,6 +378,8 @@ async def full_pipeline(request: PipelineRequest):
 
     
     ### Verify facts ###
+    execution_time_extract_claims = time.time()
+    print("verify claims...")
     verification_response = await claim_verification(VerificationRequest(texts=claims, docs=[doc_text]*len(claims)))
     ''' Format (verification_response)
     {
@@ -400,9 +406,15 @@ async def full_pipeline(request: PipelineRequest):
     }
     '''
 
+    execution_time_verify_claims = time.time()
+    print("present result...")
+    text_segments = split_into_clauses(text)
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
-        result["idx"] = _find_span_fuzzy(cls, text)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
+        
+        result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
+        best_match_sentence = best_match.split("，")
+        text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
 
         # 省議會公報 如果factuality=True
         if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
@@ -453,14 +465,14 @@ async def full_pipeline(request: PipelineRequest):
 
     now = datetime.now()
     time_string = now.strftime("%Y-%m-%d_%H-%M-%S")
-    output_text = f"""
-    {text}
+    execution_time_end = time.time()
+    execution_time = execution_time_end - execution_time_start
 
-    {input_docs}
-
-    {verification_response}
-    """
-
+    print("process input:", execution_time_process_input-execution_time_start)
+    print("extract claims:", execution_time_extract_claims-execution_time_process_input)
+    print("verify claims:", execution_time_verify_claims-execution_time_extract_claims)
+    print("present result:", execution_time_end-execution_time_verify_claims)
+    print("Total Execution time:", execution_time)
 
     return {
         "verification_results": verification_response["verification_results"]
