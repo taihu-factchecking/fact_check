@@ -443,10 +443,10 @@ async def full_pipeline(request: PipelineRequest):
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
         
-        # result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
-        # best_match_sentence = best_match.split("，")
-        # text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
-        result["idx"] = (text.index(cls), text.index(cls)+len(cls))
+        result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
+        best_match_sentence = best_match.split("，")
+        text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
+        # result["idx"] = (text.index(cls), text.index(cls)+len(cls))
 
         # 省議會公報 如果factuality=True
         if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
