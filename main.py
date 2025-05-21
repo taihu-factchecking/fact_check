@@ -117,6 +117,19 @@ def _find_span_fuzzy(clause, full_text, seg):
     return (start, end), best_segment
 
 
+def extract_comma_ngrams(parts, n):
+    ngrams = []
+    for i in range(len(parts) - (2 * n - 1)):
+        # 取 n 個句子 + (n - 1) 個逗號
+        slice_ = parts[i:i + 2 * n - 1]
+        # 檢查中間的標點是否都是「，」
+        if all(slice_[j] == '，' for j in range(1, len(slice_), 2)):
+            # 把句子合併起來
+            ngram = "".join(slice_)
+            ngrams.append(ngram)
+    return ngrams
+
+
 @app.post("/extract_uf")
 async def claim_extraction(request: TextRequest):
     text = request.text
@@ -410,6 +423,9 @@ async def full_pipeline(request: PipelineRequest):
     execution_time_verify_claims = time.time()
     print("present result...")
     text_segments = split_into_clauses(text)
+    bigrams = extract_comma_ngrams(parts, 2)
+    trigrams = extract_comma_ngrams(parts, 3)
+    text_segments.append(bigrams+trigrams)
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
         
