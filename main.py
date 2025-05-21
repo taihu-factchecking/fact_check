@@ -423,9 +423,23 @@ async def full_pipeline(request: PipelineRequest):
     execution_time_verify_claims = time.time()
     print("present result...")
     text_segments = split_into_clauses(text)
+
+    # 1. 將所有標點都作為分割單位，保留內容與標點
+    segments = re.split(r"([，。！？；])", text)
+    
+    # 2. 合併文字與標點成完整段落清單（例如 ["他指出", "，", "從潮州...", "。"]）
+    parts = []
+    for i in range(0, len(segments) - 1, 2):
+        part = segments[i].strip()
+        punct = segments[i+1].strip()
+        if part:
+            parts.append(part)
+        if punct:
+            parts.append(punct)
     bigrams = extract_comma_ngrams(parts, 2)
     trigrams = extract_comma_ngrams(parts, 3)
     text_segments.append(bigrams+trigrams)
+
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
         
