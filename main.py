@@ -136,22 +136,21 @@ def _present(text, results):
     return "\n".join(output)
 
 def _merge_verification_results(results):
+    from copy import deepcopy
+
     merged = []
     segments = deepcopy(results["verification_results"])
     if not segments:
         return {"verification_results": []}
 
-    # 標記哪些 segments 已經被合併，避免重複輸出
     used = [False] * len(segments)
 
-    # 加上 start/end 欄位並包成 list 格式
     for s in segments:
         s["start"] = s["idx"][0]
         s["end"] = s["idx"][1]
         s["claim"] = [s["claim"]] if not isinstance(s["claim"], list) else s["claim"]
         s["reasoning"] = [s["reasoning"]] if not isinstance(s["reasoning"], list) else s["reasoning"]
 
-    # 按起始位置排序並依序合併
     segments_sorted = sorted(enumerate(segments), key=lambda x: x[1]["start"])
 
     for i, seg in segments_sorted:
@@ -164,12 +163,23 @@ def _merge_verification_results(results):
             k, next_seg = segments_sorted[j]
             if used[k]:
                 continue
+
+            # 放寬 evidence 比對條件：子字串即可
+            evidence_match = (
+                current.get("evidence") in next_seg.get("evidence") or
+                next_seg.get("evidence") in current.get("evidence")
+            )
+
+            other_keys_match = all(
+                current.get(key) == next_seg.get(key)
+                for key in ["docid", "data_source", "data_title", "data_date"]
+            )
+
             if (
                 current["factuality"] == next_seg["factuality"] and
                 current["end"] + 1 == next_seg["start"] and
-                all(current.get(key) == next_seg.get(key) for key in [
-                    "filename", "docid", "url", "data_source", "data_title", "data_date", "evidence"
-                ])
+                other_keys_match and
+                evidence_match
             ):
                 current["end"] = next_seg["end"]
                 current["idx"] = [current["start"], current["end"]]
@@ -179,12 +189,12 @@ def _merge_verification_results(results):
             else:
                 break
 
-        # 移除暫存欄位
         current.pop("start", None)
         current.pop("end", None)
         merged.append(current)
 
     return {"verification_results": merged}
+
 
 
 @app.post("/extract_uf")
@@ -205,14 +215,14 @@ async def claim_extraction(request: TextRequest):
 3. 避免使用代詞或指代詞（例如「他」、「她」、「這些」、「那些」等）。
 4. 每個聲明應該是獨立的，不要產生過於相似或重複的聲明。
 5. 聲明應該具體描述，不要過於抽象或概括。
-【回應格式】：回應必須是字典列表形式，每個字典包含兩個鍵：「claim」：提取的單位事實；「clause」：claim對應到文本的子句（可包含一或多句），代表claim是從文本的那些子句中提取出事實的，一定要與文本的某個子字串相符，不要把不相關的子句包含進來。
+【回應格式】：回應必須是字典列表形式，每個字典包含兩個鍵：「claim」：提取的單位事實；「clause」：claim對應到文本的子句（可包含一或多句），代表claim是從文本的那些子句中提取出事實的，一定要與文本的某個子字串相符，不要把不相關的子句包含進來；此外，如果子句的前面有連接詞，且包含進來不影響文義，則也一併包含進來。
 你只能按照以下格式回應，不要添加任何其他內容或違反格式的註釋。
 【任務範例】：
 ［文本］：李娜在澳網決賽中，直落兩盤擊敗了謝淑薇，這是她第二次贏得了澳洲網球公開賽冠軍，非常厲害。在這場比賽之後，李娜成為亞洲第一位贏得這項大滿貫的球員。
 ［回應］：
 {{"claim": "李娜在澳網決賽中直落兩盤擊敗謝淑薇", "clause": "李娜在澳網決賽中直落兩盤擊敗了謝淑薇"}}
 {{"claim": "李娜贏得第二個澳網冠軍", "clause": "這是她第二次贏得了澳洲網球公開賽冠軍"}}
-{{"claim": "李娜是第一位亞洲大滿貫得主", "clause": "李娜成為亞洲第一位贏得這項大滿貫的球員"}}
+{{"claim": "李娜是第一位亞洲大滿貫得主", "clause": "在這場比賽之後，李娜成為亞洲第一位贏得這項大滿貫的球員"}}
 
 ［文本］：阿里巴巴宣布將投資1億元用於支持中小企業。馬雲表示，這是公司扶持創新的一部分。
 ［回應］：
@@ -223,10 +233,10 @@ async def claim_extraction(request: TextRequest):
 ［回應］：
 {{"claim": "孫士毅針對潮州至贑州的文報傳遞提出了建議。", "clause": "孫士毅在其奏摺中針對潮州至贑州的文報傳遞提出了具體的建議與措施"}}
 {{"claim": "孫士毅指出潮州至江西的通道比廣東省城的路線短一千多里", "clause": "他指出，從潮州至江西的筠門嶺再到贑州，是潮民赴江西貿易的主要通道，較之經由廣東省城的路線可以少行一千多里"}}
-{{"claim": "孫士毅建議潮州至贑州文報傳遞應經由筠門嶺", "clause": "他建議在潮州專門派遣人員，經由筠門嶺一路傳遞文報"}}
-{{"claim": "孫士毅提出從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲。", "clause": "他提到，從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲"}}
+{{"claim": "孫士毅建議潮州至贑州文報傳遞應經由筠門嶺", "clause": "因此，他建議在潮州專門派遣人員，經由筠門嶺一路傳遞文報"}}
+{{"claim": "孫士毅提出從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲。", "clause": "此外，他提到，從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲"}}
 {{"claim": "孫士毅建議在贑縣至筠門嶺之間設立接遞文報的站點以加速。", "clause": "因此他建議在贑縣至筠門嶺之間設立接遞文報的站點，以便更迅速地傳遞文報"}}
-{{"claim": "孫士毅提出建議以縮短文報傳遞時間。", "clause": "這些措施旨在縮短傳遞時間"}}
+{{"claim": "孫士毅提出建議以縮短文報傳遞時間。", "clause": "這些措施旨在縮短傳遞時間，確保文報能夠及時送達"}}
 
 現在使用以下文本完成任務：
 ［文本］：{text}
@@ -303,7 +313,7 @@ async def claim_verification(request: VerificationRequest):
 "reasoning": "判斷claim是否被evidence支持的原因",
 "factuality": 如果claim有被證據支持則為True，如果claim被證據反駁或claim跟證據無關為False,
 "filename": "如果證據跟claim沒有關聯，則不要放任何檔案的名稱，放None；如果claim有被證據支持或反駁，則放檔案名稱",
-"evidence": "用以判斷claim真實性的證據片段。如果claim沒有被任何證據支持，則為None"
+"evidence": "用以判斷claim真實性的證據片段，應回傳包含證據片段的整個段落。如果claim沒有被任何證據支持，則為None"
 }}
                 
 [範例]
@@ -442,7 +452,7 @@ async def full_pipeline(request: PipelineRequest):
     doc_text = ""  # 將所有的證據組成一個字串
     doc_id = {None: None}
     for doc in docs: # docs: 所有證據的相關資訊
-        doc_text += f"""{doc["metadata"]["source"]}:\n{doc["page_content"]}\n\n"""
+        doc_text += f"""{doc["metadata"]["source"]}({doc["other"]["date_string"]}):\n{doc["page_content"]}\n\n"""
 
         # 省議會公報(有id)
         if "id" in doc["other"]:
@@ -450,9 +460,9 @@ async def full_pipeline(request: PipelineRequest):
         # 明清台灣行政檔案(沒有id)
         else:
             continue
-    #########################
+    ######################### 
 
-    
+
     ### Verify facts ###
     execution_time_extract_claims = time.time()
     print("verify claims...")
@@ -489,7 +499,6 @@ async def full_pipeline(request: PipelineRequest):
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
         
-        print(cls)
         if cls[-1] in "，。？！；":
             cls = cls[:-1]
         result["idx"] = (text.index(cls), text.index(cls)+len(cls))
@@ -543,8 +552,14 @@ async def full_pipeline(request: PipelineRequest):
     ####################
 
 
+    print("############### Results ###############")
+    print()
     for result in verification_response["verification_results"]:
         print(result)
+    print()
+    print("############### Results ###############")
+    
+    print()
     # print("[DEBUG] GPT 回傳：", result)
 
     now = datetime.now()
@@ -552,15 +567,26 @@ async def full_pipeline(request: PipelineRequest):
     execution_time_end = time.time()
     execution_time = execution_time_end - execution_time_start
 
+    print("############### Execution Time ###############")
+    print()
     print("process input:", execution_time_process_input-execution_time_start)
     print("extract claims:", execution_time_extract_claims-execution_time_process_input)
     print("verify claims:", execution_time_verify_claims-execution_time_extract_claims)
     print("present result:", execution_time_end-execution_time_verify_claims)
     print("Total Execution time:", execution_time)
+    print()
+    print("############### Execution Time ###############")
+
+    print()
 
     ### presentation ###
     new_results = _merge_verification_results({"verification_results": verification_response["verification_results"]})
+    
+    print("############### Presentation ###############")
+    print()
     print(_present(text, new_results))
+    print()
+    print("############### Presentation ###############")
     ####################
 
 
@@ -569,4 +595,3 @@ async def full_pipeline(request: PipelineRequest):
     # }
 
     return new_results
-
