@@ -16,6 +16,7 @@ from fastapi.responses import Response
 from fastapi import Request
 from datetime import datetime
 from rapidfuzz import fuzz
+from copy import deepcopy
 
 app = FastAPI()
 
