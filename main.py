@@ -394,7 +394,8 @@ async def full_pipeline(request: PipelineRequest):
                     }
                 other = {  # 這裡放處理過程中需要的metadata
                     "id": _metadata["identifier"],  # id e.g. "003-02-03OA-05-6-4-00-00272"
-                    "data_from": data_from
+                    "data_from": data_from,
+                    "date_string": _metadata["date_string"]
                 }
             except KeyError as e:
                 print("Exception: ", e)
@@ -403,14 +404,17 @@ async def full_pipeline(request: PipelineRequest):
 
         else:  # 明清台灣行政檔案
             data_from = "明清台灣行政檔案"
-            _metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/full_text?title={doc}""")  # 取得全文
+            _fulltext = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/full_text?title={doc}""")  # 取得全文
+            _fulltext = _fulltext.json()
+            _metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={doc}""")
             _metadata = _metadata.json()
-            page_content = _metadata["full_text"]
+            page_content = _fulltext["full_text"]
             metadata = {  # 這裡放前端需要的metadata
                 "source": doc
                 }
             other = {  # 這裡放處理過程中需要的metadata
-                "data_from": data_from
+                "data_from": data_from,
+                "date_string": _metadata["date_string"]
             }
 
         doc_info = {
