@@ -116,18 +116,74 @@ def _find_span_fuzzy(clause, full_text, seg):
     print((clause, full_text[start:end]))
     return (start, end), best_segment
 
+def _present(text, results):
+    idx_evidence_map = {tuple(r["idx"]): r["evidence"] for r in results["verification_results"]}
+    idx_list = sorted(idx_evidence_map.keys())
 
-def extract_comma_ngrams(parts, n):
-    ngrams = []
-    for i in range(len(parts) - (2 * n - 1)):
-        # 取 n 個句子 + (n - 1) 個逗號
-        slice_ = parts[i:i + 2 * n - 1]
-        # 檢查中間的標點是否都是「，」
-        if all(slice_[j] == '，' for j in range(1, len(slice_), 2)):
-            # 把句子合併起來
-            ngram = "".join(slice_)
-            ngrams.append(ngram)
-    return ngrams
+    output = []
+    prev = 0
+    for start, end in idx_list:
+        if prev < start:
+            output.append(text[prev:start])  # 非 evidence 區段
+        snippet = text[start:end + 1]
+        evidence = idx_evidence_map[(start, end)]
+        output.append(f"{snippet} ← {evidence}")  # 加上對應的 evidence
+        prev = end + 1
+    if prev < len(text):
+        output.append(text[prev:])  # 剩下的部分
+
+    return "\n".join(output)
+
+def _merge_verification_results(results):
+    merged = []
+    segments = deepcopy(results["verification_results"])
+    if not segments:
+        return {"verification_results": []}
+
+    # 標記哪些 segments 已經被合併，避免重複輸出
+    used = [False] * len(segments)
+
+    # 加上 start/end 欄位並包成 list 格式
+    for s in segments:
+        s["start"] = s["idx"][0]
+        s["end"] = s["idx"][1]
+        s["claim"] = [s["claim"]] if not isinstance(s["claim"], list) else s["claim"]
+        s["reasoning"] = [s["reasoning"]] if not isinstance(s["reasoning"], list) else s["reasoning"]
+
+    # 按起始位置排序並依序合併
+    segments_sorted = sorted(enumerate(segments), key=lambda x: x[1]["start"])
+
+    for i, seg in segments_sorted:
+        if used[i]:
+            continue
+        used[i] = True
+        current = deepcopy(seg)
+
+        for j in range(i + 1, len(segments_sorted)):
+            k, next_seg = segments_sorted[j]
+            if used[k]:
+                continue
+            if (
+                current["factuality"] == next_seg["factuality"] and
+                current["end"] + 1 == next_seg["start"] and
+                all(current.get(key) == next_seg.get(key) for key in [
+                    "filename", "docid", "url", "data_source", "data_title", "data_date", "evidence"
+                ])
+            ):
+                current["end"] = next_seg["end"]
+                current["idx"] = [current["start"], current["end"]]
+                current["claim"].extend(next_seg["claim"] if isinstance(next_seg["claim"], list) else [next_seg["claim"]])
+                current["reasoning"].extend(next_seg["reasoning"] if isinstance(next_seg["reasoning"], list) else [next_seg["reasoning"]])
+                used[k] = True
+            else:
+                break
+
+        # 移除暫存欄位
+        current.pop("start", None)
+        current.pop("end", None)
+        merged.append(current)
+
+    return {"verification_results": merged}
 
 
 @app.post("/extract_uf")
@@ -151,7 +207,7 @@ async def claim_extraction(request: TextRequest):
 【回應格式】：回應必須是字典列表形式，每個字典包含兩個鍵：「claim」：提取的單位事實；「clause」：claim對應到文本的子句（可包含一或多句），代表claim是從文本的那些子句中提取出事實的，一定要與文本的某個子字串相符，不要把不相關的子句包含進來。
 你只能按照以下格式回應，不要添加任何其他內容或違反格式的註釋。
 【任務範例】：
-［文本］：李娜在澳網決賽中，直落兩盤擊敗了謝淑薇。這是她第二次贏得了澳洲網球公開賽冠軍，非常厲害。在這場比賽之後，李娜成為亞洲第一位贏得這項大滿貫的球員。
+［文本］：李娜在澳網決賽中，直落兩盤擊敗了謝淑薇，這是她第二次贏得了澳洲網球公開賽冠軍，非常厲害。在這場比賽之後，李娜成為亞洲第一位贏得這項大滿貫的球員。
 ［回應］：
 {{"claim": "李娜在澳網決賽中直落兩盤擊敗謝淑薇", "clause": "李娜在澳網決賽中直落兩盤擊敗了謝淑薇"}}
 {{"claim": "李娜贏得第二個澳網冠軍", "clause": "這是她第二次贏得了澳洲網球公開賽冠軍"}}
@@ -297,7 +353,7 @@ async def claim_verification(request: VerificationRequest):
         return responses.choices[0].message.content
     
     def clean_json_format(block):
-        block = block.replace("'", '"').replace("False", "false").replace("True", "true").replace("None", "null")
+        block = block.replace("'", '\\"').replace("False", "false").replace("True", "true").replace("None", "null")
         return block
     
     async def process_results():
@@ -312,6 +368,7 @@ async def claim_verification(request: VerificationRequest):
     return {"verification_results": await process_results()}
 
 @app.post("/fact_check_pipeline")
+
 async def full_pipeline(request: PipelineRequest):
     print("Execution Time:　", datetime.now())
     execution_time_start = time.time()
@@ -421,32 +478,22 @@ async def full_pipeline(request: PipelineRequest):
     '''
 
     execution_time_verify_claims = time.time()
-    print("present result...")
-    text_segments = split_into_clauses(text)
+    # text_segments = split_into_clauses(text)
 
-    # 1. 將所有標點都作為分割單位，保留內容與標點
-    segments = re.split(r"([，。！？；])", text)
-    
-    # 2. 合併文字與標點成完整段落清單（例如 ["他指出", "，", "從潮州...", "。"]）
-    parts = []
-    for i in range(0, len(segments) - 1, 2):
-        part = segments[i].strip()
-        punct = segments[i+1].strip()
-        if part:
-            parts.append(part)
-        if punct:
-            parts.append(punct)
-    bigrams = extract_comma_ngrams(parts, 2)
-    trigrams = extract_comma_ngrams(parts, 3)
-    text_segments.append(bigrams+trigrams)
-
+    print(verification_response["verification_results"])
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
         
-        result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
-        best_match_sentence = best_match.split("，")
-        text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
-        # result["idx"] = (text.index(cls), text.index(cls)+len(cls))
+        print(cls)
+        if cls[-1] in "，。？！；":
+            cls = cls[:-1]
+        result["idx"] = (text.index(cls), text.index(cls)+len(cls))
+
+
+        # result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
+        # best_match_sentence = best_match.split("，")
+        # text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
+        
 
         # 省議會公報 如果factuality=True
         if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
@@ -506,6 +553,15 @@ async def full_pipeline(request: PipelineRequest):
     print("present result:", execution_time_end-execution_time_verify_claims)
     print("Total Execution time:", execution_time)
 
-    return {
-        "verification_results": verification_response["verification_results"]
-    }
+    ### presentation ###
+    new_results = _merge_verification_results({"verification_results": verification_response["verification_results"]})
+    print(_present(text, new_results))
+    ####################
+
+
+    # return {
+    #     "verification_results": verification_response["verification_results"]
+    # }
+
+    return new_results
+
