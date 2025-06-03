@@ -299,7 +299,7 @@ async def claim_verification(request: VerificationRequest):
     async def _call_gpt(text: str, evd: str) -> str:
         client = AsyncOpenAI(api_key=your_api_key)
         responses = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "你是一位專業的評估員，並且使用繁體中文與台灣的詞彙做評估。"},
                 {"role": "user", "content": f"""
