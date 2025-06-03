@@ -522,7 +522,7 @@ async def full_pipeline(request: PipelineRequest):
             
             result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
 
-            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"]}""")
+            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"][:-5]}""")
             metadata = metadata.json()
             result["url"] = metadata["source_url"]
 
