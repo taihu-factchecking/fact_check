@@ -195,7 +195,14 @@ def _merge_verification_results(results):
 
     return {"verification_results": merged}
 
-
+def _remove_substrings(cls):
+    cls = list(set(cls))  # 去重
+    to_remove = set()
+    for i in range(len(cls)):
+        for j in range(len(cls)):
+            if i != j and cls[i] in cls[j]:
+                to_remove.add(cls[i])
+    return [s for s in cls if s not in to_remove]
 
 @app.post("/extract_uf")
 async def claim_extraction(request: TextRequest):
@@ -299,7 +306,7 @@ async def claim_verification(request: VerificationRequest):
     async def _call_gpt(text: str, evd: str) -> str:
         client = AsyncOpenAI(api_key=your_api_key)
         responses = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "你是一位專業的評估員，並且使用繁體中文與台灣的詞彙做評估。"},
                 {"role": "user", "content": f"""
@@ -445,6 +452,7 @@ async def full_pipeline(request: PipelineRequest):
     for claim, clause in zip(raw_claims["claims"], raw_claims["clauses"]):
         clm_cls[claim] = clause
     claims = raw_claims["claims"]
+    clauses = raw_claims["clauses"]
     ######################
     
 
@@ -466,7 +474,7 @@ async def full_pipeline(request: PipelineRequest):
     ### Verify facts ###
     execution_time_extract_claims = time.time()
     print("verify claims...")
-    verification_response = await claim_verification(VerificationRequest(texts=claims, docs=[doc_text]*len(claims)))
+    verification_response = await claim_verification(VerificationRequest(texts=_remove_substrings(clauses), docs=[doc_text]*len(claims)))
     ''' Format (verification_response)
     {
     "claim": String
