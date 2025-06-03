@@ -516,9 +516,10 @@ async def full_pipeline(request: PipelineRequest):
         # best_match_sentence = best_match.split("，")
         # text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
         
-
+        print(result["filename"])
         # 省議會公報 如果factuality=True
         if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
+            
             result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
 
             metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"]}""")
