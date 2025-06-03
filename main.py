@@ -117,7 +117,7 @@ def _find_span_fuzzy(clause, full_text, seg):
     print((clause, full_text[start:end]))
     return (start, end), best_segment
 
-def _present(text, results):
+def _present(text, results):  # 模擬前端顯示的樣子
     idx_evidence_map = {tuple(r["idx"]): r["evidence"] for r in results["verification_results"]}
     idx_list = sorted(idx_evidence_map.keys())
 
