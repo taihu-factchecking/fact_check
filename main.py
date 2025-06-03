@@ -496,6 +496,7 @@ async def full_pipeline(request: PipelineRequest):
     # text_segments = split_into_clauses(text)
 
     print(verification_response["verification_results"])
+    print(clm_cls)
     for res_idx, result in enumerate(verification_response["verification_results"]):        
         cls = clm_cls[claims[res_idx]]  # 找到clause
         
