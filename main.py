@@ -214,14 +214,14 @@ async def claim_extraction(request: TextRequest):
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": f"""
-給定一段文本，你的任務是準確識別並依序提取文本中每一個聲明（claim），並標註聲明對應到文本的原始句子（可為一或多句）。聲明是一段事實的敘述，並可由人類驗證為真或假。為確保每個聲明清晰無歧義，應避免使用代詞或其他指代表達。
+給定一段包含聲明（claim）的文本，聲明宣稱某敘述為真或假，並可由人類驗證。你的任務是準確識別並提取文本中每一個聲明，並標註聲明對應到文本的原始句子（可為一或多句）。為確保每個聲明清晰無歧義，應避免使用代詞或其他指代表達，且每個聲明應簡潔並獨立存在。
 【聲明提取規則】：
 1. 每個聲明必須是清晰、可獨立驗證的事實，不可包含模糊的推論。
-2. 聲明須為完整的事實，包含其在文本中的上下文背景。
+2. 聲明應該簡潔，理想長度為 10-20 個字，最多不超過 25 個字。
 3. 避免使用代詞或指代詞（例如「他」、「她」、「這些」、「那些」等）。
 4. 每個聲明應該是獨立的，不要產生過於相似或重複的聲明。
 5. 聲明應該具體描述，不要過於抽象或概括。
-【回應格式】：回應必須是字典列表形式，每個字典包含兩個鍵：「claim」：提取的單位事實；「clause」：claim對應到文本的子句（可包含一或多句），代表claim是從文本的那些子句中提取出事實的，一定要與文本的某個子字串相符，不要把不相關的子句包含進來，且clause之間不要有重疊的部分；此外，如果子句的前面有連接詞，且包含進來不影響文義，則一併包含進來。
+【回應格式】：回應必須是字典列表形式，每個字典包含兩個鍵：「claim」：提取的單位事實；「clause」：聲明對應的原始子句（可包含一或多句），請盡量精準，不要把不相關的子句包含進來。
 你只能按照以下格式回應，不要添加任何其他內容或違反格式的註釋。
 【任務範例】：
 ［文本］：李娜在澳網決賽中，直落兩盤擊敗了謝淑薇，這是她第二次贏得了澳洲網球公開賽冠軍，非常厲害。在這場比賽之後，李娜成為亞洲第一位贏得這項大滿貫的球員。
@@ -473,7 +473,7 @@ async def full_pipeline(request: PipelineRequest):
     ### Verify facts ###
     execution_time_extract_claims = time.time()
     print("verify claims...")
-    verification_response = await claim_verification(VerificationRequest(texts=_remove_substrings(clauses), docs=[doc_text]*len(claims)))
+    verification_response = await claim_verification(VerificationRequest(texts=claims, docs=[doc_text]*len(claims)))
     ''' Format (verification_response)
     {
     "claim": String
@@ -505,8 +505,8 @@ async def full_pipeline(request: PipelineRequest):
     print(verification_response["verification_results"])
     print(clm_cls)
     for res_idx, result in enumerate(verification_response["verification_results"]):        
-        # cls = clm_cls[claims[res_idx]]  # 找到clause
-        cls = result["claim"]
+        cls = clm_cls[claims[res_idx]]  # 找到clause
+        # cls = result["claim"]
         if cls[-1] in "，。？！；":
             cls = cls[:-1]
         result["idx"] = (text.index(cls), text.index(cls)+len(cls))
