@@ -505,7 +505,7 @@ async def full_pipeline(request: PipelineRequest):
 
 
         for input_doc in input_docs:
-            if result["filename"] in input_doc:
+            if result["filename"] in input_doc or input_doc in result["filename"]:
                 result["filename"] = input_doc
                 break
 
