@@ -512,17 +512,22 @@ async def full_pipeline(request: PipelineRequest):
         result["idx"] = (text.index(cls), text.index(cls)+len(cls))
 
 
+        for input_doc in input_docs:
+            if result["filename"] in input_doc:
+                result["filename"] = input_doc
+                break
+
+
         # result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
         # best_match_sentence = best_match.split("，")
         # text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
         
-        print(result["filename"])
         # 省議會公報 如果factuality=True
         if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
             
             result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
 
-            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"][:-5]}""")
+            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"]}""")
             metadata = metadata.json()
             result["url"] = metadata["source_url"]
 
@@ -589,18 +594,18 @@ async def full_pipeline(request: PipelineRequest):
     print()
 
     ### presentation ###
-    new_results = _merge_verification_results({"verification_results": verification_response["verification_results"]})
+    # new_results = _merge_verification_results({"verification_results": verification_response["verification_results"]})
     
-    print("############### Presentation ###############")
-    print()
-    print(_present(text, new_results))
-    print()
-    print("############### Presentation ###############")
+    # print("############### Presentation ###############")
+    # print()
+    # print(_present(text, new_results))
+    # print()
+    # print("############### Presentation ###############")
     ####################
 
 
-    # return {
-    #     "verification_results": verification_response["verification_results"]
-    # }
+    return {
+        "verification_results": verification_response["verification_results"]
+    }
 
-    return new_results
+    # return new_results
