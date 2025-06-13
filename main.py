@@ -53,6 +53,29 @@ class PipelineRequest(BaseModel):
 def log(message):
     return
 
+def sentence_ngram(text):
+    # 刪除中括號內的數字，例如 [1]、[23]
+    text = re.sub(r'\[\d+\]', '', text)
+
+    # 用 re.finditer 保留每句的標點
+    matches = re.finditer(r'([^，。！？；]+)([，。！？；]?)', text)
+    sentence_tuples = [(m.group(1).strip(), m.group(2)) for m in matches if m.group(1).strip()]
+
+    all_ngrams = []
+
+    for n in [1, 2, 3]:
+        for i in range(len(sentence_tuples) - n + 1):
+            pieces = []
+            for j in range(n):
+                sent, punct = sentence_tuples[i + j]
+                pieces.append(sent)
+                if j < n - 1:  # 中間句子之後加上它原本的標點
+                    pieces.append(punct)
+            ngram = ''.join(pieces).strip()  # 去除每個 ngram 的前後空白
+            all_ngrams.append(ngram)
+
+    return all_ngrams
+
 def split_into_clauses(text):
     coarse_segments = re.split(r"[，。？！；]", text)
     fine_clauses = re.split(r"[。？！；]", text)
@@ -117,7 +140,7 @@ def _find_span_fuzzy(clause, full_text, seg):
     print((clause, full_text[start:end]))
     return (start, end), best_segment
 
-def _present(text, results):  # 模擬前端顯示的樣子
+def _present(text, results):
     idx_evidence_map = {tuple(r["idx"]): r["evidence"] for r in results["verification_results"]}
     idx_list = sorted(idx_evidence_map.keys())
 
@@ -170,6 +193,11 @@ def _merge_verification_results(results):
                 next_seg.get("evidence") in current.get("evidence")
             )
 
+            filename_match = (
+                current.get("filename") in next_seg.get("filename") or
+                next_seg.get("filename") in current.get("filename")
+            )
+
             other_keys_match = all(
                 current.get(key) == next_seg.get(key)
                 for key in ["docid", "data_source", "data_title", "data_date"]
@@ -177,9 +205,10 @@ def _merge_verification_results(results):
 
             if (
                 current["factuality"] == next_seg["factuality"] and
-                current["end"] + 1 == next_seg["start"] and
+                current["end"] + 7 >= next_seg["start"] and
                 other_keys_match and
-                evidence_match
+                evidence_match and 
+                filename_match
             ):
                 current["end"] = next_seg["end"]
                 current["idx"] = [current["start"], current["end"]]
@@ -202,6 +231,7 @@ def _remove_substrings(cls):
             if i != j and cls[i] in cls[j]:
                 to_remove.add(cls[i])
     return [s for s in cls if s not in to_remove]
+
 
 @app.post("/extract_uf")
 async def claim_extraction(request: TextRequest):
@@ -235,6 +265,14 @@ async def claim_extraction(request: TextRequest):
 {{"claim": "阿里巴巴投資1億元支持中小企業", "clause": "阿里巴巴宣布將投資1億元用於支持中小企業"}}
 {{"claim": "馬雲表示投資是扶持創新的部分", "clause": "馬雲表示，這是公司扶持創新的一部分"}}
 
+［文本］：孫士毅在其奏摺中針對潮州至贑州的文報傳遞提出了具體的建議與措施。他指出，從潮州至江西的筠門嶺再到贑州，是潮民赴江西貿易的主要通道，較之經由廣東省城的路線可以少行一千多里。因此，他建議在潮州專門派遣人員，經由筠門嶺一路傳遞文報，以加快速度。此外，他提到，從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲，因此他建議在贑縣至筠門嶺之間設立接遞文報的站點，以便更迅速地傳遞文報。這些措施旨在縮短傳遞時間，確保文報能夠及時送達。
+［回應］：
+{{"claim": "孫士毅針對潮州至贑州的文報傳遞提出了建議。", "clause": "孫士毅在其奏摺中針對潮州至贑州的文報傳遞提出了具體的建議與措施"}}
+{{"claim": "孫士毅指出潮州至江西的通道比廣東省城的路線短一千多里", "clause": "他指出，從潮州至江西的筠門嶺再到贑州，是潮民赴江西貿易的主要通道，較之經由廣東省城的路線可以少行一千多里"}}
+{{"claim": "孫士毅建議潮州至贑州文報傳遞應經由筠門嶺", "clause": "因此，他建議在潮州專門派遣人員，經由筠門嶺一路傳遞文報"}}
+{{"claim": "孫士毅提出從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲。", "clause": "此外，他提到，從贑州到潮州的文報傳遞若仍經由廣東省城，會導致延遲"}}
+{{"claim": "孫士毅建議在贑縣至筠門嶺之間設立接遞文報的站點以加速。", "clause": "因此他建議在贑縣至筠門嶺之間設立接遞文報的站點，以便更迅速地傳遞文報"}}
+{{"claim": "孫士毅提出建議以縮短文報傳遞時間。", "clause": "這些措施旨在縮短傳遞時間，確保文報能夠及時送達"}}
 
 現在使用以下文本完成任務：
 ［文本］：{text}
@@ -310,7 +348,7 @@ async def claim_verification(request: VerificationRequest):
 "claim": "提取的聲明",
 "reasoning": "判斷claim是否被evidence支持的原因",
 "factuality": 如果claim有被證據支持則為True，如果claim被證據反駁或claim跟證據無關為False,
-"filename": "如果證據跟claim沒有關聯，則不要放任何檔案的名稱，放None；如果claim有被證據支持或反駁，則放檔案名稱",
+"filename": "如果證據跟claim沒有關聯，則不要放任何檔案的名稱，放None；如果claim有被證據支持或反駁，則放檔案**全名**",
 "evidence": "用以判斷claim真實性的證據片段，應回傳包含證據片段的整個段落。如果claim沒有被任何證據支持，則為None"
 }}
                 
@@ -350,10 +388,8 @@ async def claim_verification(request: VerificationRequest):
 "evidence": "目前課程的僵化是值得檢討，尤其課程的一元化是適應於升學的，對於不升學的根本無法接受；"
 }}
 
-
-
                 
-現在使用以下文本和證據完成任務：
+現在使用以下證據搭配文本完成任務：
 [文本]: {text}
 [證據]: {evd}
 [回應]:"""}
@@ -377,7 +413,6 @@ async def claim_verification(request: VerificationRequest):
     return {"verification_results": await process_results()}
 
 @app.post("/fact_check_pipeline")
-
 async def full_pipeline(request: PipelineRequest):
     print("Execution Time:　", datetime.now())
     execution_time_start = time.time()
@@ -393,12 +428,15 @@ async def full_pipeline(request: PipelineRequest):
     for doc in input_docs:
         if "TPC" in doc:  # 省議會公報
             data_from = "省議會公報"
+            _fulltext = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/full_text?title={doc}""")  # 取得全文
+            _fulltext = _fulltext.json()
             _metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={doc}""")  # 取得metadata
             _metadata = _metadata.json()
             try:
-                page_content = _metadata["data_title"] + "。概要：" + _metadata["abstract"]  # 證據內容，由檔名與摘要組成
+                # page_content = _metadata["data_title"] + "。概要：" + _metadata["abstract"]  # 證據內容，由檔名與摘要組成
+                page_content = _fulltext["full_text"]
                 metadata = {  # 這裡放前端需要的metadata
-                    "source": _metadata["_ftxfilename"]  # 檔案名稱 e.g. "TPC03GAZ-00005020.json"
+                    "source": doc
                     }
                 other = {  # 這裡放處理過程中需要的metadata
                     "id": _metadata["identifier"],  # id e.g. "003-02-03OA-05-6-4-00-00272"
@@ -411,10 +449,11 @@ async def full_pipeline(request: PipelineRequest):
             
 
         else:  # 明清台灣行政檔案
+            # doc = "".join(doc[:doc.rindex("-")])
             data_from = "明清台灣行政檔案"
             _fulltext = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/full_text?title={doc}""")  # 取得全文
             _fulltext = _fulltext.json()
-            _metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={doc}""")
+            _metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={"".join(doc[:doc.rindex("-")])}""")
             _metadata = _metadata.json()
             page_content = _fulltext["full_text"]
             metadata = {  # 這裡放前端需要的metadata
@@ -495,17 +534,25 @@ async def full_pipeline(request: PipelineRequest):
     # text_segments = split_into_clauses(text)
 
     print(verification_response["verification_results"])
-    print(clm_cls)
-    for res_idx, result in enumerate(verification_response["verification_results"]):        
+    # print(clm_cls)
+
+    seg = sentence_ngram(text)
+    for res_idx, result in enumerate(verification_response["verification_results"]):       
         # cls = clm_cls[claims[res_idx]]  # 找到clause
         cls = result["claim"]
         if cls[-1] in "，。？！；":
-            cls = cls[:-1]
-        result["idx"] = (text.index(cls), text.index(cls)+len(cls))
+            cls = cls[:-1].replace(" ", "")
+        cls_info = _find_span_fuzzy(cls, text, seg) 
+        result["idx"] = cls_info[0]
+        cls = cls_info[1]
+        # print(cls)
+        # result["idx"] = (text.index(cls), text.index(cls)+len(cls))
 
 
         for input_doc in input_docs:
-            if result["filename"] in input_doc or input_doc in result["filename"]:
+            # print("input_doc:", input_doc)
+            # print("result['filename']:", result["filename"])
+            if result["filename"] and (result["filename"] in input_doc or input_doc in result["filename"]):
                 result["filename"] = input_doc
                 break
 
@@ -513,12 +560,18 @@ async def full_pipeline(request: PipelineRequest):
         # result["idx"], best_match = _find_span_fuzzy(cls, text, text_segments)  # 新增欄位"idx"到result裡面，表示對應到output的位置資訊
         # best_match_sentence = best_match.split("，")
         # text_segments = [s for s in text_segments if not any(sub in s for sub in best_match_sentence)]
+        input_file = result["filename"]
+        if input_file not in [None, 'null']:
+            if input_file.index("-")!=input_file.rindex("-"):
+                input_file = "".join(result["filename"][:result["filename"].rindex("-")])
+            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={input_file}""")
+            metadata = metadata.json()
         
         # 省議會公報 如果factuality=True
-        if result["filename"] not in [None, 'null'] and result["filename"] in doc_id:
+        if result["filename"] not in [None, 'null'] and metadata["collect_name"]=="臺灣省議會公報": # and result["filename"] in doc_id:
             
-            result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
-
+            # result["docid"] = doc_id[result["filename"]]  # 新增欄位"docid"到result裡面
+            
             metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"]}""")
             metadata = metadata.json()
             result["url"] = metadata["source_url"]
@@ -532,14 +585,18 @@ async def full_pipeline(request: PipelineRequest):
             ##########################################
 
         # 明清台灣行政檔案
-        elif result["filename"] not in [None, 'null']:
+        elif result["filename"] not in [None, 'null'] and (metadata["collect_name"]=="明清檔案" or metadata["collect_name"]=="漢文台灣日日新報"):
+            input_file = result["filename"]
+            if input_file.index("-")!=input_file.rindex("-"):
+                input_file = "".join(result["filename"][:result["filename"].rindex("-")])
+
             result["docid"] = ""  # 明清台灣行政檔案沒有identifier
             result["url"] = f"""https://nvcenter.ntu.edu.tw:8000/full_text?title={result["filename"]}"""  # 獲得全文
 
 
             # 新增 1.來源 2.標題 3.日期 4.證據句子 到輸出
             ##########################################
-            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={result["filename"]}""")
+            metadata = requests.get(f"""https://nvcenter.ntu.edu.tw:8000/metadata?title={input_file}""")
             metadata = metadata.json()
 
             result["data_source"] = metadata["collect_name"]
@@ -550,7 +607,7 @@ async def full_pipeline(request: PipelineRequest):
         else:  # 證據不相關
             result["docid"] = ""
             result["url"] = ""
-            result["data_source"] = ""
+            result["data_source"] = "無證據支持"
             result["data_title"] = ""
             result["data_date"] = ""
 
@@ -585,21 +642,19 @@ async def full_pipeline(request: PipelineRequest):
 
     print()
 
-    ## presentation ###
-    new_results = _merge_verification_results({"verification_results": verification_response["verification_results"]})
-    
-    print("############### Presentation ###############")
-    print()
-    print(_present(text, new_results))
-    print()
-    print("############### Presentation ###############")
-    ###################
 
-    return new_results
-
-
-    # return {
-    #     "verification_results": verification_response["verification_results"]
-    # }
-
+    try:
+        new_results = _merge_verification_results({"verification_results": verification_response["verification_results"]})
+        ### presentation ###
+        print("############### Presentation ###############")
+        print()
+        print(_present(text, new_results))
+        print()
+        print("############### Presentation ###############")
+        ####################
+        if not new_results:
+            return {"verification_results": verification_response["verification_results"]}
+        return new_results
+    except Exception:
+        return {"verification_results": verification_response["verification_results"]}
     
