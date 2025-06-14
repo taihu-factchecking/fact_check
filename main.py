@@ -490,7 +490,7 @@ async def full_pipeline(request: PipelineRequest):
     doc_text = ""  # 將所有的證據組成一個字串
     doc_id = {None: None}
     for doc in docs: # docs: 所有證據的相關資訊
-        doc_text += f"""{doc["metadata"]["source"]}({doc["other"]["date_string"]}):\n{doc["page_content"]}\n\n"""
+        doc_text += f"""檔案名稱：{doc["metadata"]["source"]}\n檔案時間：{doc["other"]["date_string"]}\n檔案內容{doc["page_content"]}\n\n"""
 
         # 省議會公報(有id)
         if "id" in doc["other"]:
